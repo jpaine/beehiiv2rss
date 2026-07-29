@@ -24,13 +24,21 @@ A lightweight, stateless web service built with FastAPI. Provide any public Beeh
 ## Quick start
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/jpaine/beehiiv2rss
 cd beehiiv2rss
-uv sync
-uv run uvicorn app.main:app --reload
+uv sync                # runtime dependencies
+uv sync --all-extras   # include dev dependencies (pytest, ruff)
 ```
 
 ## Usage
+
+Start the server:
+
+```bash
+uv run uvicorn app.main:app --reload
+```
+
+Test it:
 
 ```bash
 curl "http://localhost:8000/feed?url=https://example-newsletter.beehiiv.com"
@@ -62,11 +70,12 @@ Copy `.env.example` to `.env` or export variables directly.
 
 ## Testing
 
+Tests use local HTML fixtures. No live websites required.
+
 ```bash
+uv sync --all-extras
 uv run pytest
 ```
-
-Tests use local HTML fixtures. No live websites are required.
 
 ## Linting
 
