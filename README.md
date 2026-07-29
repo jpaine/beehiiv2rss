@@ -12,6 +12,35 @@ A lightweight, stateless web service built with FastAPI. Provide any public Beeh
 - Returns a valid RSS 2.0 feed with `content:encoded` support
 - Filters out navigation, ads, subscribe forms, and tracking elements
 
+## Use cases
+
+### Integrate Beehiiv content into any RSS reader
+
+Point any RSS reader (NetNewsWire, Feedly, Miniflux, etc.) at the `/feed` endpoint instead of requiring users to visit the newsletter website.
+
+### Pull Beehiiv articles into a mobile app
+
+```tsx
+// React Native — works with any RSS parsing library
+const response = await fetch('https://your-server.com/feed?url=https://newsletter.beehiiv.com');
+const feed = await parse(await response.text());
+// feed.title, feed.items[0].title, feed.items[0].content, etc.
+```
+
+Same approach works for web apps, desktop apps, static site generators, or any HTTP-capable client.
+
+### Save feeds as static files via cron
+
+```cron
+*/15 * * * * curl -fsS "http://localhost:8000/feed?url=https://newsletter.beehiiv.com" > /var/www/feeds/newsletter.xml
+```
+
+Serve the XML files directly from a web server — no Python process needed at read time.
+
+### Embed newsletter content in your own website
+
+Fetch the RSS server-side and render articles on your site. The `content:encoded` field contains full cleaned HTML ready to display.
+
 ## What it does not do
 
 - Does not store anything permanently
