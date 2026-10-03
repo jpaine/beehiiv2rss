@@ -128,6 +128,22 @@ class TestGenerateRss:
         channel = root.find("channel")
         assert channel.findtext("language") == "en"
 
+    def test_hero_image_enclosure(self):
+        pub = Publication(title="Test", url="https://test.beehiiv.com", description="desc")
+        article = Article(
+            title="Post",
+            url="https://test.beehiiv.com/p/post",
+            guid="https://test.beehiiv.com/p/post",
+            hero_image_url="https://cdn.beehiiv.com/image.jpg",
+        )
+        result = FeedResult(publication=pub, articles=[article])
+        rss = generate_rss(result)
+        root = self._parse(rss)
+        item = root.find(".//item")
+        enclosure = item.find("enclosure")
+        assert enclosure is not None
+        assert enclosure.get("url") == "https://cdn.beehiiv.com/image.jpg"
+
     def test_xml_special_chars_escaped(self):
         pub = Publication(title="Test & Co.", url="https://test.beehiiv.com", description="desc")
         article = Article(

@@ -115,6 +115,8 @@ uv run ruff format --check
 
 ## Self-hosting
 
+See [DEPLOY.md](DEPLOY.md) for a Docker build/run path.
+
 ### Production
 
 ```bash
@@ -165,10 +167,12 @@ Errors return JSON:
 
 ## Security
 
-- Private IP ranges, localhost, and link-local addresses are blocked
-- Redirect targets are validated for safety
+- Private IP ranges, localhost, link-local addresses, and carrier-grade NAT space are blocked
+- Hostnames are resolved before fetch; all resolved addresses must be public (DNS rebinding protection)
+- Homepage URLs, discovered article links, and every redirect hop are validated before outbound HTTP
+- Redirect targets must stay on supported Beehiiv domains and pass the same safety checks
 - HTTP and HTTPS only
-- Cloud metadata endpoints are blocked
+- Cloud metadata hostnames are blocked
 - Input validation happens before any HTTP request is made
 - Stack traces are never exposed to API users
 

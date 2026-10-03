@@ -1,6 +1,7 @@
 import ipaddress
 import re
-from urllib.parse import urlparse
+import socket
+from urllib.parse import urljoin, urlparse
 
 from app.errors import InvalidURLError, UnsafeURLError, UnsupportedSourceError
 
@@ -15,12 +16,39 @@ _PRIVATE_NETWORKS = [
     "fc00::/7",
     "fe80::/10",
     "169.254.0.0/16",
+    "100.64.0.0/10",
 ]
+
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "::1",
+        "metadata.google.internal",
+        "metadata.goog",
+    }
+)
 
 _PRIVATE_BLOCKS = [ipaddress.ip_network(n) for n in _PRIVATE_NETWORKS]
 
 
 def validate_and_normalise_url(raw_url: str) -> str:
+    parsed = _parse_http_url(raw_url)
+    if not is_supported_domain(parsed.hostname):
+        raise UnsupportedSourceError("Only Beehiiv publications are supported.")
+    return _normalise_parsed_url(parsed)
+
+
+def validate_fetch_url(raw_url: str) -> str:
+    """Validate a Beehiiv URL immediately before an outbound HTTP fetch."""
+    parsed = _parse_http_url(raw_url)
+    if not is_supported_domain(parsed.hostname):
+        raise UnsupportedSourceError("Only Beehiiv publication URLs may be fetched.")
+    return _normalise_parsed_url(parsed)
+
+
+def _parse_http_url(raw_url: str) -> urlparse:
     url = raw_url.strip()
     if not url:
         raise InvalidURLError("No URL provided.")
@@ -35,37 +63,54 @@ def validate_and_normalise_url(raw_url: str) -> str:
     if not is_safe_netloc(parsed.hostname):
         raise UnsafeURLError("The provided URL is unsafe.")
 
-    if not is_supported_domain(parsed.hostname):
-        raise UnsupportedSourceError("Only Beehiiv publications are supported.")
+    return parsed
 
-    normalised = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
-    return normalised
+
+def _normalise_parsed_url(parsed: urlparse) -> str:
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
 
 
 def is_safe_netloc(hostname: str | None) -> bool:
     if not hostname:
         return False
-    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "metadata.google.internal"):
+    host = hostname.strip().lower().rstrip(".")
+    if host in _BLOCKED_HOSTNAMES:
         return False
     try:
-        addr = ipaddress.ip_address(hostname)
-        for block in _PRIVATE_BLOCKS:
-            if addr in block:
-                return False
-        return True
+        addr = ipaddress.ip_address(host)
+        return _is_safe_ip(addr)
     except ValueError:
         pass
-    try:
-        import socket
 
-        addr = socket.getaddrinfo(hostname, 80, family=socket.AF_INET)[0][4][0]
-        ip = ipaddress.ip_address(addr)
-        for block in _PRIVATE_BLOCKS:
-            if ip in block:
+    resolved_any = False
+    for family in (socket.AF_INET, socket.AF_INET6):
+        try:
+            infos = socket.getaddrinfo(
+                host,
+                None,
+                family=family,
+                type=socket.SOCK_STREAM,
+            )
+        except OSError:
+            continue
+        for info in infos:
+            resolved_any = True
+            ip_str = info[4][0]
+            try:
+                addr = ipaddress.ip_address(ip_str)
+            except ValueError:
                 return False
-        return True
-    except (OSError, IndexError):
-        return False
+            if not _is_safe_ip(addr):
+                return False
+
+    return resolved_any
+
+
+def _is_safe_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    for block in _PRIVATE_BLOCKS:
+        if addr in block:
+            return False
+    return True
 
 
 def is_supported_domain(hostname: str | None) -> bool:
@@ -76,12 +121,11 @@ def is_supported_domain(hostname: str | None) -> bool:
     return False
 
 
+def resolve_redirect_target(response_url: str, location: str) -> str:
+    if not location:
+        raise UnsafeURLError("Redirect target is missing.")
+    return urljoin(response_url, location.strip())
+
+
 def check_redirect_safety(redirect_url: str) -> str:
-    parsed = urlparse(redirect_url)
-    if not parsed.scheme or not parsed.netloc:
-        raise UnsafeURLError("Redirect target is invalid.")
-    if parsed.scheme not in ("http", "https"):
-        raise UnsafeURLError("Redirect target uses an unsupported protocol.")
-    if not is_safe_netloc(parsed.hostname):
-        raise UnsafeURLError("Redirect target is unsafe.")
-    return redirect_url
+    return validate_fetch_url(redirect_url)

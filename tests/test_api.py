@@ -114,6 +114,7 @@ def _mock_client(routes: dict):
             mock_resp.is_permanent_redirect = False
             mock_resp.raise_for_status = MagicMock()
             mock_resp.headers = {"location": ""}
+            mock_resp.url = url
         else:
             mock_resp.status_code = 404
             mock_resp.text = "<html><body>Not Found</body></html>"
@@ -121,6 +122,7 @@ def _mock_client(routes: dict):
             mock_resp.is_permanent_redirect = False
             mock_resp.raise_for_status = MagicMock(side_effect=Exception("Not found"))
             mock_resp.headers = {"location": ""}
+            mock_resp.url = url
         return mock_resp
 
     client = MagicMock()

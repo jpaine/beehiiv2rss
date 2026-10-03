@@ -4,7 +4,8 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from app.errors import NoArticlesFoundError
+from app.errors import AppError, NoArticlesFoundError
+from app.security import validate_fetch_url
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,19 @@ def discover_articles(html: str, base_url: str) -> list[str]:
             continue
         if _is_article_link(normalized) and not _is_excluded(normalized):
             canonical = _canonicalise(normalized)
-            if canonical and canonical not in seen:
-                seen.add(canonical)
-                urls.append(canonical)
+            if not canonical or canonical in seen:
+                continue
+            try:
+                safe_url = validate_fetch_url(canonical)
+            except AppError as exc:
+                logger.warning(
+                    "Skipping unsafe discovered article URL %s: %s",
+                    canonical,
+                    exc.message,
+                )
+                continue
+            seen.add(safe_url)
+            urls.append(safe_url)
 
     if not urls:
         raise NoArticlesFoundError()
