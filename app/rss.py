@@ -61,6 +61,12 @@ def generate_rss(feed_result: FeedResult, feed_url: str | None = None) -> str:
         if article.description:
             _add_text(item, "description", article.description)
 
+        if article.hero_image_url:
+            enclosure = etree.SubElement(item, "enclosure")
+            enclosure.set("url", article.hero_image_url)
+            enclosure.set("type", "image/jpeg")
+            enclosure.set("length", "0")
+
         if article.html_content:
             content = etree.SubElement(item, f"{{{_CONTENT_NS}}}encoded")
             content.text = etree.CDATA(article.html_content)

@@ -9,12 +9,12 @@ from fastapi.responses import JSONResponse, Response
 
 from app.config import settings
 from app.discovery import discover_articles
-from app.errors import AppError, NoArticlesFoundError, UpstreamError
+from app.errors import AppError, NoArticlesFoundError
 from app.fetcher import fetch_page
 from app.models import FeedResult
 from app.parser import parse_article, parse_publication
 from app.rss import generate_rss
-from app.security import check_redirect_safety, validate_and_normalise_url
+from app.security import validate_and_normalise_url
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.client = httpx.AsyncClient(
-        follow_redirects=True,
+        follow_redirects=False,
         max_redirects=settings.max_redirects,
         headers={"User-Agent": settings.user_agent},
         timeout=httpx.Timeout(settings.request_timeout_seconds),
@@ -57,31 +57,9 @@ async def feed(
     client: httpx.AsyncClient = app.state.client
 
     try:
-        response = await client.get(
-            normalised,
-            follow_redirects=False,
-            timeout=httpx.Timeout(settings.request_timeout_seconds),
-        )
-
-        if response.is_redirect:
-            redirect_target = response.headers.get("location", "")
-            if redirect_target:
-                check_redirect_safety(redirect_target)
-                normalised = redirect_target
-            response = await client.get(
-                normalised,
-                follow_redirects=True,
-                timeout=httpx.Timeout(settings.request_timeout_seconds),
-            )
-
-        response.raise_for_status()
-        homepage_html = response.text
-    except httpx.TimeoutException:
-        raise UpstreamError("Upstream website timed out.")
-    except httpx.HTTPStatusError as e:
-        raise UpstreamError(f"Upstream returned HTTP {e.response.status_code}.")
-    except httpx.RequestError as e:
-        raise UpstreamError(str(e))
+        homepage_html = await fetch_page(normalised, client)
+    except AppError:
+        raise
 
     article_urls = discover_articles(homepage_html, normalised)
     if not article_urls:
@@ -91,22 +69,23 @@ async def feed(
 
     semaphore = asyncio.Semaphore(settings.fetch_concurrency)
 
-    async def fetch_article(article_url: str) -> str | None:
+    async def fetch_article(article_url: str) -> tuple[str, str | None]:
         async with semaphore:
             try:
-                return await fetch_page(article_url, client)
+                html = await fetch_page(article_url, client)
+                return article_url, html
             except AppError as e:
                 logger.warning("Failed to fetch article %s: %s", article_url, e.message)
-                return None
+                return article_url, None
 
-    html_pages = await asyncio.gather(*[fetch_article(u) for u in article_urls])
+    fetch_results = await asyncio.gather(*[fetch_article(u) for u in article_urls])
 
     publication = parse_publication(homepage_html, normalised)
     articles = []
-    for html_page in html_pages:
+    for article_url, html_page in fetch_results:
         if not html_page:
             continue
-        article = parse_article(html_page, normalised)
+        article = parse_article(html_page, article_url)
         if article:
             articles.append(article)
 

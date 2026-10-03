@@ -6,7 +6,35 @@ from app.security import (
     is_safe_netloc,
     is_supported_domain,
     validate_and_normalise_url,
+    validate_fetch_url,
 )
+
+
+class TestValidateFetchUrl:
+    def test_valid_article_url(self):
+        result = validate_fetch_url("https://example.beehiiv.com/p/my-post")
+        assert result == "https://example.beehiiv.com/p/my-post"
+
+    def test_private_ip_rejected(self):
+        with pytest.raises(UnsafeURLError):
+            validate_fetch_url("http://192.168.0.5/p/post")
+
+    def test_non_beehiiv_rejected(self):
+        with pytest.raises(UnsupportedSourceError):
+            validate_fetch_url("https://example.com/p/post")
+
+    def test_dns_rebinding_blocked(self, monkeypatch):
+        import socket
+
+        def fake_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            if host == "rebind.beehiiv.com":
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
+            raise OSError("unexpected host")
+
+        monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+        assert is_safe_netloc("rebind.beehiiv.com") is False
+        with pytest.raises(UnsafeURLError):
+            validate_fetch_url("https://rebind.beehiiv.com/p/post")
 
 
 class TestValidateAndNormaliseUrl:
@@ -126,6 +154,10 @@ class TestCheckRedirectSafety:
         with pytest.raises(UnsafeURLError):
             check_redirect_safety("http://192.168.1.1/admin")
 
+    def test_redirect_to_non_beehiiv_rejected(self):
+        with pytest.raises(UnsupportedSourceError):
+            check_redirect_safety("https://example.com/p/post")
+
     def test_redirect_to_ftp(self):
-        with pytest.raises(UnsafeURLError):
+        with pytest.raises(InvalidURLError):
             check_redirect_safety("ftp://example.com/file")
