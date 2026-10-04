@@ -21,9 +21,12 @@ Point any RSS reader (NetNewsWire, Feedly, Miniflux, etc.) at the `/feed` endpoi
 ### Pull Beehiiv articles into a mobile app
 
 ```tsx
-// React Native — works with any RSS parsing library
+// React Native — example with rss-parser (https://www.npmjs.com/package/rss-parser)
+import Parser from 'rss-parser';
+
+const parser = new Parser();
 const response = await fetch('https://your-server.com/feed?url=https://newsletter.beehiiv.com');
-const feed = await parse(await response.text());
+const feed = await parser.parseString(await response.text());
 // feed.title, feed.items[0].title, feed.items[0].content, etc.
 ```
 
@@ -31,11 +34,7 @@ Same approach works for web apps, desktop apps, static site generators, or any H
 
 ### Save feeds as static files via cron
 
-```cron
-*/15 * * * * curl -fsS "http://localhost:8000/feed?url=https://newsletter.beehiiv.com" > /var/www/feeds/newsletter.xml
-```
-
-Serve the XML files directly from a web server — no Python process needed at read time.
+Schedule periodic `curl` requests to `/feed` and write the XML to disk (see [Using cron](#using-cron) under Self-hosting). Serve the files directly from a web server — no Python process needed at read time.
 
 ### Embed newsletter content in your own website
 
@@ -160,7 +159,7 @@ Errors return JSON:
 
 ## Known limitations
 
-- Only `*.beehiiv.com` subdomains are supported. Custom domains are not yet detectable unless they use standard Beehiiv markup.
+- Only `*.beehiiv.com` subdomains are supported. Custom domains are not supported.
 - Article discovery relies on the homepage HTML. If Beehiiv changes its page structure, discovery may break.
 - Pages rendered entirely by JavaScript are not supported.
 - Articles without a clear title are skipped.
